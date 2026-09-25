@@ -48,8 +48,10 @@ type Mission = {
   objective: string;
 };
 
+const initialMission: Mission = { id: 1, name: "Input Sanitization", category: "Novice", minutes: "10–15 min", xp: 50, summary: "A reflected payload is hiding in the store search.", objective: "Trace the unsafe query, neutralize the script, and preserve valid product searches." };
+
 const missions: Mission[] = [
-  { id: 1, name: "Input Sanitization", category: "Novice", minutes: "10–15 min", xp: 50, summary: "A reflected payload is hiding in the store search.", objective: "Trace the unsafe query, neutralize the script, and preserve valid product searches." },
+  initialMission,
   { id: 2, name: "Broken Access", category: "Cadet", minutes: "15–20 min", xp: 75, summary: "Unauthorized signals reached the collection admin core.", objective: "Identify the exposed action and enforce role checks without breaking the storefront." },
   { id: 3, name: "Review XSS", category: "Elite", minutes: "20–25 min", xp: 100, summary: "Malicious scripts are burning through product reviews.", objective: "Inspect the review renderer, contain the payload, and submit a safe rendering patch." },
   { id: 4, name: "Void Injection", category: "Ace", minutes: "25–30 min", xp: 150, summary: "The main database query is leaking into the void.", objective: "Find the injectable parameter and replace the query with a secure prepared statement." },
@@ -73,7 +75,7 @@ function Brand() {
 }
 
 function Index() {
-  const [activeMission, setActiveMission] = useState(missions[0]);
+  const [activeMission, setActiveMission] = useState<Mission>(initialMission);
   const [filter, setFilter] = useState("All");
   const [briefingOpen, setBriefingOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
