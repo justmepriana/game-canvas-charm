@@ -10,6 +10,7 @@ import {
   Code2,
   Crown,
   Home,
+  LogOut,
   Menu,
   Search,
   ShoppingBag,
@@ -17,9 +18,15 @@ import {
   Trophy,
   X,
   Zap,
+  UserRound,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import type { User } from "@supabase/supabase-js";
 import { Button } from "@/components/ui/button";
+import { supabase } from "@/integrations/supabase/client";
+import { lovable } from "@/integrations/lovable";
+import { useServerFn } from "@tanstack/react-start";
+import { completePlayerMission, getPlayerProgress } from "@/lib/threadline.functions";
 import heroImage from "@/assets/threadline-hero.jpg";
 import missionImage from "@/assets/threadline-missions.jpg";
 import shopImage from "@/assets/threadline-shop.jpg";
@@ -79,6 +86,45 @@ function Index() {
   const [filter, setFilter] = useState("All");
   const [briefingOpen, setBriefingOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [callsignInput, setCallsignInput] = useState("");
+  const [authMessage, setAuthMessage] = useState("");
+  const [authBusy, setAuthBusy] = useState(false);
+  const [player, setPlayer] = useState<User | null>(null);
+  const [progress, setProgress] = useState<{ callsign: string; totalXp: number; completions: { missionId: number; completedAt: string }[] } | null>(null);
+  const [savingMission, setSavingMission] = useState(false);
+  const loadProgress = useServerFn(getPlayerProgress);
+  const finishMission = useServerFn(completePlayerMission);
+
+  useEffect(() => {
+    let current = true;
+    void supabase.auth.getSession().then(({ data }) => {
+      if (current) setPlayer(data.session?.user ?? null);
+    });
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!current) return;
+      setPlayer(session?.user ?? null);
+      if (!session) setProgress(null);
+    });
+    return () => {
+      current = false;
+      listener.subscription.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!player) return;
+    let current = true;
+    void loadProgress().then((data) => {
+      if (current) setProgress(data);
+    }).catch(() => {
+      if (current) setAuthMessage("Player data is temporarily unavailable. Try again shortly.");
+    });
+    return () => { current = false; };
+  }, [player, loadProgress]);
 
   const visibleMissions = useMemo(
     () => (filter === "All" ? missions : missions.filter((mission) => mission.category === filter)),
@@ -89,6 +135,78 @@ function Index() {
     setActiveMission(mission);
     setBriefingOpen(true);
   };
+
+  const submitAuth = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setAuthBusy(true);
+    setAuthMessage("");
+    try {
+      if (authMode === "signup") {
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: { data: { callsign: callsignInput.trim().slice(0, 24) || "Cyberdreamer" } },
+        });
+        if (error) throw error;
+        if (!data.session) {
+          setAuthMessage("Check your email for a confirmation link to activate your account.");
+          return;
+        }
+        setAccountOpen(false);
+      } else {
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+        setAccountOpen(false);
+      }
+    } catch (error) {
+      setAuthMessage(error instanceof Error ? error.message : "Sign-in could not be completed.");
+    } finally {
+      setAuthBusy(false);
+    }
+  };
+
+  const signInWithGoogle = async () => {
+    setAuthBusy(true);
+    setAuthMessage("");
+    const result = await lovable.auth.signInWithOAuth("google", { redirect_uri: window.location.origin });
+    if (result.error) {
+      setAuthMessage(result.error.message);
+      setAuthBusy(false);
+    }
+  };
+
+  const signOut = async () => {
+    await supabase.auth.signOut();
+    setProgress(null);
+    setAccountOpen(false);
+  };
+
+  const markMissionComplete = async () => {
+    if (!player) {
+      setBriefingOpen(false);
+      setAccountOpen(true);
+      setAuthMessage("Sign in to save mission progress.");
+      return;
+    }
+    setSavingMission(true);
+    setAuthMessage("");
+    try {
+      const result = await finishMission({ data: { missionId: activeMission.id } });
+      const updated = await loadProgress();
+      setProgress(updated);
+      setAuthMessage(result.newlyCompleted ? `Mission secured · +${activeMission.xp} XP` : "Mission already secured — rewards are only granted once.");
+      setBriefingOpen(false);
+    } catch {
+      setAuthMessage("Could not save this mission. Sign in and try again.");
+    } finally {
+      setSavingMission(false);
+    }
+  };
+
+  const completedIds = new Set(progress?.completions.map((item) => item.missionId) ?? []);
+  const displayName = progress?.callsign ?? player?.email?.split("@")[0] ?? "Cyberdreamer";
+  const displayXp = progress?.totalXp ?? 50;
+  const displayLevel = Math.floor(displayXp / 300) + 1;
 
   return (
     <div className="game-shell min-h-screen bg-background text-foreground">
@@ -123,7 +241,8 @@ function Index() {
               <Search className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <input className="h-11 w-full border border-border bg-panel/70 pl-11 pr-4 text-sm outline-none transition focus:border-primary" placeholder="Search missions, gear, or topics" />
             </label>
-            <Button variant="ghost" size="icon" aria-label="Notifications"><Bell className="size-4" /></Button>
+            <Button variant="ghost" size="icon" aria-label={player ? "Player account" : "Sign in"} onClick={() => { setAuthMessage(""); setAccountOpen(true); }}><UserRound className="size-4" /></Button>
+            <span className="hidden text-xs uppercase text-muted-foreground sm:block">{player ? displayName : "Guest"}</span>
           </div>
 
           <section className="hero-panel relative min-h-[390px] overflow-hidden border border-border sm:min-h-[430px]">
@@ -162,7 +281,7 @@ function Index() {
                     <span className="absolute left-2 top-2 bg-badge px-2 py-1 text-[10px] font-bold uppercase text-badge-foreground">{mission.category}</span>
                   </div>
                   <div className="p-3">
-                    <p className="text-[10px] font-bold uppercase text-primary">Mission 0{mission.id}</p>
+                    <p className="text-[10px] font-bold uppercase text-primary">Mission 0{mission.id}{completedIds.has(mission.id) ? " · Secured" : ""}</p>
                     <h3 className="mt-1 font-display text-xl uppercase leading-none">{mission.name}</h3>
                     <p className="mt-2 min-h-10 text-xs leading-5 text-muted-foreground">{mission.summary}</p>
                     <div className="my-3 flex items-center justify-between text-[10px] uppercase text-silver"><span className="flex items-center gap-1"><Clock3 className="size-3" />{mission.minutes}</span><span>✦ {mission.xp} XP</span></div>
@@ -181,15 +300,15 @@ function Index() {
         </main>
 
         <aside className="right-rail border-t border-border bg-panel/70 p-4 lg:border-l lg:border-t-0 lg:p-5">
-          <div className="flex items-center justify-between border-b border-border pb-4"><div><p className="text-xs uppercase text-muted-foreground">Operator</p><p className="font-display text-xl uppercase">Cyberdreamer</p></div><div className="grid size-11 place-items-center border border-primary text-primary"><Crown className="size-5" /></div></div>
+          <div className="flex items-center justify-between border-b border-border pb-4"><div><p className="text-xs uppercase text-muted-foreground">Operator</p><p className="font-display text-xl uppercase">{displayName}</p></div><div className="grid size-11 place-items-center border border-primary text-primary"><Crown className="size-5" /></div></div>
 
           <section className="panel mt-5 p-5">
             <div className="flex items-center justify-between"><h2 className="font-display text-xl uppercase">Status core</h2><Sparkles className="size-4 text-primary" /></div>
-            <div className="mt-5 flex items-center gap-4"><div className="level-ring grid size-16 shrink-0 place-items-center rounded-full"><span className="font-display text-2xl">1</span></div><div className="flex-1"><p className="text-xs uppercase">Level 1</p><div className="mt-2 h-1.5 overflow-hidden bg-muted"><div className="h-full w-2/5 bg-primary" /></div><p className="mt-1 text-[10px] uppercase text-muted-foreground">120 / 300 stardust</p></div></div>
-            <div className="mt-5 grid grid-cols-2 gap-2"><Stat value="1" label="Stars won" /><Stat value="0" label="Win streak" /><Stat value="50" label="Total XP" /><Stat value="4" label="Badges" /></div>
+            <div className="mt-5 flex items-center gap-4"><div className="level-ring grid size-16 shrink-0 place-items-center rounded-full"><span className="font-display text-2xl">{displayLevel}</span></div><div className="flex-1"><p className="text-xs uppercase">Level {displayLevel}</p><div className="mt-2 h-1.5 overflow-hidden bg-muted"><div className="h-full bg-primary" style={{ width: `${Math.min(100, (displayXp % 300) / 3)}%` }} /></div><p className="mt-1 text-[10px] uppercase text-muted-foreground">{displayXp % 300} / 300 stardust</p></div></div>
+            <div className="mt-5 grid grid-cols-2 gap-2"><Stat value={String(progress?.completions.length ?? 1)} label="Stars won" /><Stat value="0" label="Win streak" /><Stat value={String(displayXp)} label="Total XP" /><Stat value={String(progress?.completions.length ?? 4)} label="Missions cleared" /></div>
           </section>
 
-          <section className="panel mt-4 p-5"><h2 className="font-display text-xl uppercase">Signal feed</h2><div className="mt-4 space-y-4"><Feed icon={Zap} title="Mission 01 secured" detail="+50 XP · 1 hour ago" /><Feed icon={Activity} title="Mission 02 scanned" detail="Weak signal · 2 hours ago" /><Feed icon={Trophy} title="Code guardian earned" detail="Badge unlocked yesterday" /></div></section>
+          <section className="panel mt-4 p-5"><h2 className="font-display text-xl uppercase">Signal feed</h2><div className="mt-4 space-y-4">{progress?.completions.length ? progress.completions.slice(0, 3).map((item) => { const mission = missions.find((entry) => entry.id === item.missionId); return <Feed key={item.missionId} icon={Zap} title={`Mission 0${item.missionId} secured`} detail={`+${mission?.xp ?? 0} XP · ${new Date(item.completedAt).toLocaleDateString()}`} />; }) : <><Feed icon={Zap} title={player ? "No missions secured yet" : "Mission 01 secured"} detail={player ? "Your completed missions appear here" : "+50 XP · 1 hour ago"} /><Feed icon={Activity} title="Mission 02 scanned" detail="Weak signal · 2 hours ago" /><Feed icon={Trophy} title="Code guardian earned" detail="Badge unlocked yesterday" /></>}</div></section>
 
           <section className="shop-card relative mt-4 min-h-[330px] overflow-hidden border border-border">
             <img src={shopImage} alt="Model wearing Threadline constellation techwear" loading="lazy" width={800} height={1104} className="absolute inset-0 h-full w-full object-cover" />
@@ -204,7 +323,27 @@ function Index() {
           <div className="briefing w-full max-w-2xl border border-primary bg-panel p-6 shadow-2xl sm:p-8">
             <div className="flex items-start justify-between gap-4"><div><p className="text-xs font-bold uppercase text-primary">Mission 0{activeMission.id} · {activeMission.category}</p><h2 id="briefing-title" className="mt-1 font-display text-4xl uppercase sm:text-5xl">{activeMission.name}</h2></div><Button variant="quiet" size="icon" aria-label="Close briefing" onClick={() => setBriefingOpen(false)}><X /></Button></div>
             <div className="my-6 border-y border-border py-6"><p className="text-xs uppercase text-muted-foreground">Field objective</p><p className="mt-2 text-lg leading-7 text-silver">{activeMission.objective}</p></div>
-            <div className="flex flex-wrap items-center justify-between gap-4"><div className="flex gap-5 text-xs uppercase"><span>{activeMission.minutes}</span><span className="text-primary">✦ {activeMission.xp} XP</span></div><Button onClick={() => setBriefingOpen(false)}>Launch simulator <ArrowRight className="size-4" /></Button></div>
+            <div className="flex flex-wrap items-center justify-between gap-4"><div className="flex gap-5 text-xs uppercase"><span>{activeMission.minutes}</span><span className="text-primary">✦ {activeMission.xp} XP</span></div><div className="flex flex-wrap gap-2"><Button variant="quiet" onClick={() => setBriefingOpen(false)}>Close</Button><Button onClick={markMissionComplete} disabled={savingMission}>{completedIds.has(activeMission.id) ? "Secured" : savingMission ? "Saving…" : "Secure mission"}<ArrowRight className="size-4" /></Button></div></div>
+          </div>
+        </div>
+      )}
+
+      {accountOpen && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-background/85 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="account-title" onMouseDown={(event) => { if (event.currentTarget === event.target) setAccountOpen(false); }}>
+          <div className="briefing w-full max-w-md border border-primary bg-panel p-6 sm:p-8">
+            <div className="mb-6 flex items-start justify-between gap-4"><div><p className="text-xs font-bold uppercase text-primary">Player access</p><h2 id="account-title" className="mt-1 font-display text-4xl uppercase">{player ? displayName : authMode === "signin" ? "Sign in" : "Create account"}</h2></div><Button variant="quiet" size="icon" aria-label="Close account" onClick={() => setAccountOpen(false)}><X /></Button></div>
+            {player ? <div><p className="text-sm text-muted-foreground">{player.email}</p><Button className="mt-6 w-full" variant="outline" onClick={signOut}><LogOut className="size-4" /> Sign out</Button></div> : <>
+              <Button className="w-full" variant="outline" onClick={signInWithGoogle} disabled={authBusy}>Continue with Google</Button>
+              <div className="my-5 flex items-center gap-3 text-[10px] uppercase text-muted-foreground"><span className="h-px flex-1 bg-border" />or use email<span className="h-px flex-1 bg-border" /></div>
+              <form className="space-y-3" onSubmit={submitAuth}>
+                {authMode === "signup" && <label className="block text-xs uppercase text-muted-foreground">Callsign<input className="mt-1 h-10 w-full border border-border bg-background px-3 text-sm text-foreground outline-none focus:border-primary" maxLength={24} value={callsignInput} onChange={(event) => setCallsignInput(event.target.value)} placeholder="Cyberdreamer" /></label>}
+                <label className="block text-xs uppercase text-muted-foreground">Email<input className="mt-1 h-10 w-full border border-border bg-background px-3 text-sm text-foreground outline-none focus:border-primary" type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} /></label>
+                <label className="block text-xs uppercase text-muted-foreground">Password<input className="mt-1 h-10 w-full border border-border bg-background px-3 text-sm text-foreground outline-none focus:border-primary" type="password" autoComplete={authMode === "signup" ? "new-password" : "current-password"} minLength={6} required value={password} onChange={(event) => setPassword(event.target.value)} /></label>
+                {authMessage && <p className="text-sm text-primary" role="status">{authMessage}</p>}
+                <Button className="w-full" type="submit" disabled={authBusy}>{authBusy ? "Working…" : authMode === "signin" ? "Sign in" : "Create account"}</Button>
+              </form>
+              <p className="mt-5 text-center text-sm text-muted-foreground">{authMode === "signin" ? "New operator?" : "Already registered?"} <button className="text-primary underline underline-offset-4" onClick={() => { setAuthMode(authMode === "signin" ? "signup" : "signin"); setAuthMessage(""); }}>{authMode === "signin" ? "Create an account" : "Sign in"}</button></p>
+            </>}
           </div>
         </div>
       )}
