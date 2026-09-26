@@ -14,13 +14,67 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      mission_completions: {
+        Row: {
+          completed_at: string
+          id: string
+          mission_id: number
+          user_id: string
+          xp_awarded: number
+        }
+        Insert: {
+          completed_at?: string
+          id?: string
+          mission_id: number
+          user_id: string
+          xp_awarded: number
+        }
+        Update: {
+          completed_at?: string
+          id?: string
+          mission_id?: number
+          user_id?: string
+          xp_awarded?: number
+        }
+        Relationships: []
+      }
+      player_profiles: {
+        Row: {
+          callsign: string
+          created_at: string
+          total_xp: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          callsign?: string
+          created_at?: string
+          total_xp?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          callsign?: string
+          created_at?: string
+          total_xp?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      complete_threadline_mission: {
+        Args: { _mission_id: number }
+        Returns: {
+          completed_count: number
+          newly_completed: boolean
+          total_xp: number
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never
