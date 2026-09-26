@@ -75,6 +75,22 @@ export type Database = {
           total_xp: number
         }[]
       }
+      get_or_create_threadline_profile: {
+        Args: never
+        Returns: {
+          callsign: string
+          created_at: string
+          total_xp: number
+          updated_at: string
+          user_id: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "player_profiles"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
     }
     Enums: {
       [_ in never]: never
