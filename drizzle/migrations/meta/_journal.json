@@ -15,6 +15,13 @@
       "when": 1790417953799,
       "tag": "0001_threadline_profile_setup",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790489655953,
+      "tag": "0002_lock_threadline_xp_updates",
+      "breakpoints": true
     }
   ]
 }
