@@ -3,7 +3,6 @@ import {
   Activity,
   ArrowRight,
   BarChart3,
-  Bell,
   BookOpen,
   ChevronRight,
   Clock3,
@@ -168,9 +167,12 @@ function Index() {
   const signInWithGoogle = async () => {
     setAuthBusy(true);
     setAuthMessage("");
-    const result = await lovable.auth.signInWithOAuth("google", { redirect_uri: window.location.origin });
-    if (result.error) {
-      setAuthMessage(result.error.message);
+    try {
+      const result = await lovable.auth.signInWithOAuth("google", { redirect_uri: window.location.origin });
+      if (result.error) setAuthMessage(result.error.message);
+    } catch {
+      setAuthMessage("Google sign-in could not be started. Please try again.");
+    } finally {
       setAuthBusy(false);
     }
   };
@@ -205,7 +207,7 @@ function Index() {
 
   const completedIds = new Set(progress?.completions.map((item) => item.missionId) ?? []);
   const displayName = progress?.callsign ?? player?.email?.split("@")[0] ?? "Cyberdreamer";
-  const displayXp = progress?.totalXp ?? 50;
+  const displayXp = player ? progress?.totalXp ?? 0 : 50;
   const displayLevel = Math.floor(displayXp / 300) + 1;
 
   return (
@@ -244,12 +246,13 @@ function Index() {
             <Button variant="ghost" size="icon" aria-label={player ? "Player account" : "Sign in"} onClick={() => { setAuthMessage(""); setAccountOpen(true); }}><UserRound className="size-4" /></Button>
             <span className="hidden text-xs uppercase text-muted-foreground sm:block">{player ? displayName : "Guest"}</span>
           </div>
+          {authMessage && !accountOpen && !briefingOpen && <p className="mb-4 text-sm text-primary" role="status" aria-live="polite">{authMessage}</p>}
 
           <section className="hero-panel relative min-h-[390px] overflow-hidden border border-border sm:min-h-[430px]">
             <img src={heroImage} alt="Threadline operatives in silver and black techwear" width={1600} height={704} className="absolute inset-0 h-full w-full object-cover" />
             <div className="hero-shade absolute inset-0" />
             <div className="relative z-10 flex min-h-[390px] max-w-xl flex-col justify-center p-6 sm:min-h-[430px] sm:p-10">
-              <p className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase text-primary"><Sparkles className="size-3" /> Welcome back, cyberdreamer</p>
+              <p className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase text-primary"><Sparkles className="size-3" /> Welcome back, {displayName}</p>
               <h1 className="font-display text-6xl uppercase leading-[0.82] text-foreground sm:text-8xl">Secure<br /><span className="text-primary">the style</span></h1>
               <p className="mt-5 max-w-md text-sm leading-6 text-silver">Enter the Threadline arena, where high fashion meets cyber defense. Find the flaw, deploy the patch, and claim the drop.</p>
               <Button className="mt-6 w-fit" onClick={() => openMission(activeMission)}>Start mission <ArrowRight className="size-4" /></Button>
@@ -342,7 +345,7 @@ function Index() {
                 {authMessage && <p className="text-sm text-primary" role="status">{authMessage}</p>}
                 <Button className="w-full" type="submit" disabled={authBusy}>{authBusy ? "Working…" : authMode === "signin" ? "Sign in" : "Create account"}</Button>
               </form>
-              <p className="mt-5 text-center text-sm text-muted-foreground">{authMode === "signin" ? "New operator?" : "Already registered?"} <button className="text-primary underline underline-offset-4" onClick={() => { setAuthMode(authMode === "signin" ? "signup" : "signin"); setAuthMessage(""); }}>{authMode === "signin" ? "Create an account" : "Sign in"}</button></p>
+              <p className="mt-5 text-center text-sm text-muted-foreground">{authMode === "signin" ? "New operator?" : "Already registered?"} <Button type="button" variant="link" className="h-auto min-h-0 px-1 py-0 text-sm" onClick={() => { setAuthMode(authMode === "signin" ? "signup" : "signin"); setAuthMessage(""); }}>{authMode === "signin" ? "Create an account" : "Sign in"}</Button></p>
             </>}
           </div>
         </div>

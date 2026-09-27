@@ -8,3 +8,5 @@
 > Commits you push to the connected branch sync back to Lovable and show up in
 > the editor, so keep the branch in a working state.
 <!-- LOVABLE:END -->
+
+- Keep Threadline player progress reads and mission-reward writes in authenticated TanStack server functions; the database awards each mission once so client state cannot mint XP.
